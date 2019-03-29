@@ -1,0 +1,56 @@
+# clean fresh miq virt appliances
+# greg.procunier@gmail.com
+#
+# ansible-playbook -i inventory/<env>-inventory.yml -l allServers play.yml
+---
+- name: initialize miq appliances
+  hosts: all
+  vars:
+    stock_deployment:
+      - /var/www/miq/vmdb/GUID
+      - /var/www/miq/vmdb/REGION
+      - /var/www/miq/vmdb/config/database.yml 
+      - /var/www/miq/vmdb/certs/v2_key
+  tasks:
+    - name: stop evmserverd
+      service:
+        name: evmserverd
+        state: stopped
+    - name: stop postgres
+      service:
+        name: rh-postgresql95-postgresql
+        state: stopped
+    - name: disable evmserverd
+      service:
+        name: evmserverd
+        enabled: no
+    - name: disable postgres
+      service:
+        name: rh-postgresql95-postgresql
+        enabled: no
+    - name: clean old config
+      file:
+        state: absent
+        path: "{{ item }}"
+      with_items:
+        - "{{ stock_deployment }}"
+    - name: unmount old db data
+      become: true
+      mount:
+        src: /dev/vg_data/lv_pg
+        path: /var/opt/rh/rh-postgresql95/lib/pgsql
+        state: unmounted
+    - name: clean old fstab entry for db data
+      become: true
+      mount:
+        src: /dev/vg_data/lv_pg
+        path: /var/opt/rh/rh-postgresql95/lib/pgsql
+        state: absent
+    - name: remove db vg
+      lvg:
+        vg: "{{ item }}"
+        state: absent
+        force: yes
+      with_items:
+        - vg_data
+        - vg_pg

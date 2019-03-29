@@ -1,0 +1,49 @@
+# configure secondary database
+# this is really sensitive, idempotency is realized by redeploying the miq image
+# retrying this will require extensive cleanup otherwise
+# greg.procunier@gmail.com
+#
+---
+- name: configure secondary database
+  hosts: all
+  tasks:
+    - name: fetch remote key from primary db
+      shell:
+        cmd: |
+           . /root/.bash_profile
+           /usr/local/bin/appliance_console_cli  --fetch-key={{ primaryDb }} --sshlogin=root --sshpassword=smartvm || exit 1
+      register: fetch_key
+      failed_when: fetch_key.rc > 0
+    - name: create the fstab entry for pgsql
+      lineinfile:
+        path: /etc/fstab
+        state: present
+        regexp: '.*/var/opt/rh/rh-postgresql95/lib/pgsql\s*.*'
+        line: '/dev/vg_pg/lv_pg /var/opt/rh/rh-postgresql95/lib/pgsql  xfs             rw,noatime        0        0'
+    - name: create pgsql folder
+      file:
+        path: /var/opt/rh/rh-postgresql95/lib/pgsql
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: 0755
+        seuser: system_u
+        serole: object_r
+        setype: postgresql_db_t
+        selevel: s0
+    - selinux:
+        policy: targeted
+        state: permissive
+    - name: configure db
+      shell:
+        cmd: |
+          . /root/.bash_profile
+          appliance_console_cli --standby-host={{ secondaryDb }} --username=root --password='{{ dbPassword }}' --replication=standby --cluster-node-number=2 --auto-failover --primary-host={{ primaryDb }} --dbdisk {{ dbDisk }} || exit 1
+      register: createDbRegion
+      failed_when: createDbRegion.rc > 0
+    - name: /usr/sbin/restorecon /var/opt/rh/rh-postgresql95/lib/pgsql
+      shell: /usr/sbin/restorecon -Rv /var/opt/rh/rh-postgresql95/lib/pgsql
+    - selinux:
+        policy: targeted
+        state: enforcing
+

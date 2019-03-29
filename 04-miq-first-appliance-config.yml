@@ -1,0 +1,23 @@
+# configure first appliance-node
+# greg.procunier@gmail.com
+#
+# ansible-playbook -i inventory/<env>-inventory.yml -l primaryAppliance play.yml
+---
+- name: configure first appliance-node
+  hosts: all
+  tasks:
+    - name: fetch remote key from primary db
+      shell:
+        cmd: |
+           . /root/.bash_profile
+           /usr/local/bin/appliance_console_cli  --fetch-key={{ primaryDb }} --sshlogin=root --sshpassword=smartvm || exit 1
+      register: fetch_key
+      failed_when: fetch_key.rc > 0
+    - name: create region in external database
+      shell:
+        cmd: |
+          . /root/.bash_profile
+          appliance_console_cli --region {{ regionId }} --hostname {{ primaryDb }} --username root --password={{ dbPassword }} || exit 1
+      register: createDbRegion
+      when: createRegion == true
+      failed_when: createDbRegion.rc > 0 or 'Failed to configure external database' in createDbRegion.stdout_lines

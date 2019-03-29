@@ -1,0 +1,56 @@
+# configure time / timezone
+# greg.procunier@gmail.com
+#
+# ansible-playbook -i inventory/<env>-inventory.yml -l allServers play.yml
+---
+- name: time and timezone config
+  hosts: all
+  tasks:
+    - selinux:
+        policy: targeted
+        state: permissive
+    - name: set the local timezone
+      timezone:
+        name: America/Toronto
+      become: yes
+      become_method: sudo
+    - selinux:
+        policy: targeted
+        state: enforcing
+    - name: stop chronyd
+      service:
+        name: chronyd
+        state: stopped
+    - name: enable chronyd
+      service:
+        name: chronyd
+        enabled: yes
+    - name: clean stock server lines from chrony.conf
+      lineinfile:
+        path: /etc/chrony.conf
+        regexp: '^server '
+        state: absent
+    - name: add example ntp servers
+      lineinfile:
+        path: /etc/chrony.conf
+        line: "server {{ item }} iburst"
+      with_items:
+        - "{{ exampleNtp }}"
+    - name: pump the local clock
+      shell:
+        cmd: "/bin/env ntpdate {{ exampleNtp[0] }}"
+    - name: start chronyd
+      service:
+        name: chronyd
+        state: started
+    - name: clean stock server lines from ntp.conf
+      lineinfile:
+        path: /etc/ntp.conf
+        regexp: '^server '
+        state: absent
+    - name: add example ntp servers for legacy ntp.conf
+      lineinfile:
+        path: /etc/ntp.conf
+        line: "server {{ item }} iburst"
+      with_items:
+        - "{{ exampleNtp }}"

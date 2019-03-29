@@ -1,0 +1,22 @@
+# configure primary database
+# greg.procunier@gmail.com
+#
+# ansible-playbook -i inventory/<env>-inventory.yml -l primaryDb play.yml
+---
+- name: configure primary db
+  hosts: all
+  tasks:
+    - name: create encryption key for primary db
+      shell:
+        cmd: |
+           . /root/.bash_profile
+           /usr/local/bin/appliance_console_cli  --key || exit 1
+      register: create_key
+      failed_when: create_key.rc > 0
+    - name: create a new database
+      shell:
+        cmd: |
+          . /root/.bash_profile
+          appliance_console_cli --standalone --internal --dbdisk {{ dbDisk }} --region {{ regionId }} --password='{{ dbPassword }}' || exit 1
+      register: createDb
+      failed_when: createDb.rc > 0

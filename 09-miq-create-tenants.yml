@@ -1,0 +1,54 @@
+# Configure Tenant (Projects) in the EVM via REST
+# greg.procunier@gmail.com
+#
+# ansible-playbook -i inventory/<env>-inventory.yml -l primaryAppliance play.yml
+
+---
+- name: Create Tenant Hierarchy
+  hosts: all
+  tasks:
+    - name: authenticate and request token
+      uri:
+        url: https://localhost/api/auth
+        method: GET
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        user: "{{ miqUser | default('admin') }}"
+        password: "{{ miqPass | default('smartvm') }}"
+      register: restLogin
+    - name: Query Tenants to get root href
+      uri:
+        url: https://localhost/api/tenants?expand=resources&attributes=id,name
+        method: GET
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+      register: miqTenants
+    - set_fact:
+        tenantMap: "{{ tenantMap | default({}) | combine( { item.name: item.id } ) }}"
+      with_items: "{{ miqTenants.json.resources }}"
+    - name: Create Symcor Tenants
+      uri:
+        url: https://localhost/api/tenants
+        method: POST
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        body:
+          action: "create"
+          resource:
+            parent:
+              "{{ miqTenants.json.resources[0] }}"
+            name: "{{ item }}"
+            description: "{{ item }}"
+            divisible: false
+      when: tenantMap[item] is undefined
+      with_items:
+        - "{{ exampleTenants }}"

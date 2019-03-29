@@ -1,0 +1,41 @@
+# Configure external authentication for the UI node
+# greg.procunier@gmail.com
+#
+# ansible-playbook -i inventory/<env>-inventory.yml -l primaryAppliance play.yml
+---
+- name: Configure the UI node for external auth
+  hosts: all
+  vars:
+    templateDir: "/opt/manageiq/manageiq-appliance/TEMPLATE"
+    eauth:
+      -
+        src: "{{ templateDir }}/etc/pam.d/httpd-auth"
+        dst: "/etc/pam.d/httpd-auth"
+      -
+        src: "{{ templateDir }}/etc/httpd/conf.d/manageiq-remote-user.conf"
+        dst: "/etc/httpd/conf.d"
+      -
+        src: "{{ templateDir }}/etc/httpd/conf.d/manageiq-external-auth.conf.erb"
+        dst: "/etc/httpd/conf.d/manageiq-external-auth.conf"
+  tasks:
+    - name: copy ext auth templates
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dst }}"
+        remote_src: true
+      with_items:
+        - "{{ eauth }}"
+    - name: setsebool allow_httpd_mod_auth_pam
+      seboolean:
+        name: allow_httpd_mod_auth_pam
+        state: yes
+        persistent: yes
+    - name: setsebool httpd_dbus_sssd
+      seboolean:
+        name: httpd_dbus_sssd
+        state: yes
+        persistent: yes
+    - name: restart httpd
+      service:
+        name: httpd
+        state: restarted

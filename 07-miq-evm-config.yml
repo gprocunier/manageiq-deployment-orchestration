@@ -1,0 +1,61 @@
+# perform basic EVM configuration via REST
+# greg.procunier@gmail.com
+#
+# ansible-playbook -i inventory/<env>-inventory.yml -l evm play.yml
+---
+- name: Configure global EVM settings
+  hosts: all
+  tasks:
+    - name: authenticate and request token
+      uri:
+        url: https://localhost/api/auth
+        method: GET
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        user: "{{ miqUser | default('admin') }}"
+        password: "{{ miqPass | default('smartvm') }}"
+      register: restLogin
+    - name: Query MIQ servers
+      uri:
+        url: https://localhost/api/servers?expand=resources
+        method: GET
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+      register: miqServers
+    - name: Update EVM global params and cluster roles
+      uri:
+        url: https://localhost/api/servers/{{ item.id }}/settings
+        method: PATCH
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        body:
+          server:
+            company: "Example-dot-com"
+            timezone: "Eastern Time (US & Canada)"
+            role: "{{ serverRoles[item.hostname.split('.')[0]] | join(',')}}"
+            custom_login_text: "{{ miqLoginText | default('Mention Environment here thanks!') }}"
+            use_custom_login_text: true
+            custom_login_logo: true
+          authentication:
+            mode: "httpd"
+            httpd_role: true
+          ntp:
+            server:
+              - "{{ exampleNtp[0] }}" 
+              - "{{ exampleNtp[1] }}"
+          smtp:
+            domain: "example.com"
+            from: "{{ smtpFrom | default('nobody@example.com') }}"
+            host: "{{ smtpHost | default('localhost') }}"
+      with_items:
+        - "{{ miqServers.json.resources }}"
+

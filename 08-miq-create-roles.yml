@@ -1,0 +1,69 @@
+# Configure MIQ Roles via REST
+# greg.procunier@gmail.com
+# ansible-playbook -i inventory/<env>-inventory.yml -l primaryAppliance play.yml
+ 
+---
+- name: Create MIQ Roles
+  hosts: all
+  tasks:
+    - name: authenticate and request token
+      uri:
+        url: https://localhost/api/auth
+        method: GET
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        user: "{{ miqUser | default('admin') }}"
+        password: "{{ miqPass | default('smartvm') }}"
+      register: restLogin
+    - name: Query and store custom roles
+      uri:
+        url: https://localhost/api/roles?expand=resources&attributes=id,name
+        method: GET
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+      register: miqRoles
+    - set_fact:
+        roleMap: "{{ roleMap | default({}) | combine( { item.name: item.id } ) }}"
+      with_items: "{{ miqRoles.json.resources }}"
+    - name: Create Author Role
+      uri:
+        url: https://localhost/api/roles
+        method: POST
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        body:
+          action: "create"
+          resource:
+            name: "Author"
+            features:
+              - identifier: "service"
+              - identifier: "automation_manager"
+              - identifier: "configuration_job"
+      when: roleMap["Author"] is not defined
+    - name: Create Consumer Role
+      uri:
+        url: https://localhost/api/roles
+        method: POST
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        body:
+          action: "create"
+          resource:
+            name: "Consumer"
+            features:
+              - identifier: "miq_request_view"
+              - identifier: "miq_request_control"
+      when: roleMap["Consumer"] is not defined

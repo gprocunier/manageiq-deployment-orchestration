@@ -1,0 +1,79 @@
+# Configure AD Groups in the EVM via REST
+# greg.procunier@gmail.com
+#
+# ansible-playbook -i inventory/<env>-inventory.yml -l primaryAppliance play.yml
+---
+- name: Create Groups mapped to AD
+  hosts: all
+  tasks:
+    - name: authenticate and request token
+      uri:
+        url: https://localhost/api/auth
+        method: GET
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        user: "{{ miqUser | default('admin') }}"
+        password: "{{ miqPass | default('smartvm') }}"
+      register: restLogin
+    - name: Query and store custom roles
+      uri:
+        url: https://localhost/api/roles?expand=resources&attributes=id,name
+        method: GET
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+      register: miqRoles
+    - set_fact:
+        roleMap: "{{ roleMap | default({}) | combine( { item.name: item.id } ) }}"
+      with_items: "{{ miqRoles.json.resources }}"
+    - name: Query and store tenants
+      uri:
+        url: https://localhost/api/tenants?expand=resources&attributes=id,name
+        method: GET
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+      register: miqTenants
+    - set_fact:
+        tenantMap: "{{ tenantMap | default({}) | combine( { item.name: item.id } ) }}"
+      with_items: "{{ miqTenants.json.resources }}"
+    - name: Query and store the existing groups
+      uri:
+        url: https://localhost/api/groups?expand=resources&filter[]=group_type=user
+        method: GET
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+      register: miqGroups
+    - set_fact:
+        groupMap: "{{ groupMap | default( {}) | combine( { item.description: item.id } ) }}"
+      with_items:
+        - "{{ miqGroups.json.resources }}"
+    - name: Create Symcor Groups based on role and tenant
+      uri:
+        url: https://localhost/api/groups
+        method: POST
+        headers:
+          X-Auth-Token: "{{ restLogin.json.auth_token }}"
+        validate_certs: no
+        status_code: 200
+        body_type: json
+        body_format: json
+        body:
+          action: "create"
+          resource:
+            description: "{{ item.0.name }}"
+            role:
+              id: "{{ roleMap[item.1.role] }}"
+            tenant:
+              id: "{{ tenantMap[item.1.tenant] }}"
+      when: ( groupMap is defined and groupMap[item.0.name] is not defined) or groupMap is not defined
+      with_subelements:
+        - "{{ customGroups }}"
+        - data
