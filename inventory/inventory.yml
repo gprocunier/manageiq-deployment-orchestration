@@ -6,7 +6,7 @@ all:
     dbPassword: 'yourDbPassword'
     primaryDb: "primaryDB.example.com"
     seconadryDb: "secondaryDB.example.com"
-    symcorNtp:
+    exampleNtp:
       - "192.168.100.100"
       - "192.168.100.200"
     smtpHost: "smtp.example.com"
